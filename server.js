@@ -1,71 +1,58 @@
-import express from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import pkg from 'pg';
+import express from "express";
+import cors from "cors";
+import pkg from "pg";
+import dotenv from "dotenv";
 
+dotenv.config();
 const { Pool } = pkg;
+
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 
-// 🔐 Configure no Render / .env
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }
 });
 
-app.post('/relatorios', async (req, res) => {
+app.get("/", (req, res) => {
+  res.send("Servidor do App de Artes online 🚀");
+});
+
+app.post("/acoes", async (req, res) => {
+  const { aluno, turma, serie, acao, dados } = req.body;
+
   try {
-    const relatorios = Array.isArray(req.body) ? req.body : [req.body];
-    for (const r of relatorios) {
-      await pool.query(
-        `INSERT INTO relatorios (nome, serie, turma, bimestre, acertos, total, rubrica, data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [r.nome, r.serie, r.turma, r.fase, r.acertos, r.total, r.rubrica, r.data]
-      );
-    }
+    await pool.query(
+      `INSERT INTO acoes (aluno, turma, serie, acao, dados)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [aluno, turma, serie, acao, dados]
+    );
+
     res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao salvar relatórios' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao salvar ação" });
   }
 });
 
-app.post('/eventos', async (req, res) => {
+app.get("/relatorios", async (req, res) => {
+  const { turma, serie } = req.query;
+
   try {
-    const eventos = Array.isArray(req.body) ? req.body : [req.body];
-    for (const e of eventos) {
-      await pool.query(
-        `INSERT INTO eventos (nome, serie, turma, bimestre, tela, acao, detalhe, data)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [e.nome, e.serie, e.turma, e.bimestre, e.tela, e.acao, e.detalhe, e.data]
-      );
-    }
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro ao salvar eventos' });
+    const result = await pool.query(
+      `SELECT * FROM acoes WHERE turma = $1 AND serie = $2 ORDER BY id DESC`,
+      [turma, serie]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Erro ao buscar relatórios" });
   }
 });
 
-app.get('/export/csv', async (req, res) => {
-  const { serie, turma, bimestre } = req.query;
-  const { rows } = await pool.query(
-    `SELECT * FROM relatorios
-     WHERE ($1::text IS NULL OR serie = $1)
-       AND ($2::text IS NULL OR turma = $2)
-       AND ($3::int IS NULL OR bimestre = $3)
-     ORDER BY data DESC`,
-    [serie || null, turma || null, bimestre ? Number(bimestre) : null]
-  );
-
-  const header = 'nome,serie,turma,bimestre,acertos,total,rubrica,data\n';
-  const csv = rows.map(r =>
-    `${r.nome},${r.serie},${r.turma},${r.bimestre},${r.acertos},${r.total},${r.rubrica},${r.data}`
-  ).join('\n');
-
-  res.setHeader('Content-Type', 'text/csv');
-  res.send(header + csv);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Servidor rodando na porta " + PORT);
 });
-
-app.listen(3000, () => console.log('Backend rodando na porta 3000'));
